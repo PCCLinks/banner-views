@@ -10,6 +10,9 @@ Rem  1. 25-May-2017  Arlette Slachmuylder
 Rem     Created view
 Rem  2. 8-September-2017 Arlette Slachmuylder
 Rem     Corrected error where ATTS='FC" was in the PIDM_LIST query, this was removed
+Rem  3. 16-September-2017 Arlette Slachmuylder
+Rem     Added the FT attribute for viewing of Fast Track students in SE
+Rem     Note that EFC is still viewable only for FC students as necessated by Jody Potter 
 Rem -----------------------------------------------------------------------
 Rem
 
@@ -20,7 +23,7 @@ WITH BASE_LIST as (
     select distinct SGRSATT_PIDM PIDM
         ,SGRSATT_ATTS_CODE ATTS
     from SGRSATT
-    where SGRSATT_ATTS_CODE in ('FC','GWY','YES')
+    where SGRSATT_ATTS_CODE in ('FC','GWY','YES','FT')
 )
 ,PIDM_LIST as (
     select distinct

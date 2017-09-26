@@ -10,6 +10,8 @@ Rem
 Rem Modifications
 Rem  1. 25-May-2017  Arlette Slachmuylder
 Rem     Created view
+Rem  2. 16-September-2017 Arlette Slachmuylder
+Rem     Added the FT attribute for viewing of Fast Track students in SE
 Rem
 Rem -----------------------------------------------------------------------
 Rem
@@ -22,7 +24,7 @@ WITH BASE_LIST as (
         SGRSATT_PIDM PIDM
         ,SGRSATT_ATTS_CODE ATTS
     from SGRSATT
-    where SGRSATT_ATTS_CODE in ('FC','GWY','YES')
+    where SGRSATT_ATTS_CODE in ('FC','GWY','YES','FT')
 )
 ,PIDM_LIST as (
     select distinct SFRSTCR_PIDM PIDM
