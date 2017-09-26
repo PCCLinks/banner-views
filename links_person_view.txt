@@ -1,0 +1,249 @@
+Rem -----------------------------------------------------------------------
+Rem VIEW: SWVLINKS_PERSON - Links Application View of Person Data
+Rem
+Rem Purpose: To provide required Banner data to Links Application
+Rem          Only students with attributes associated with the
+Rem          LINKS program are returned
+Rem -----------------------------------------------------------------------
+Rem Modifications
+Rem  1. 25-May-2017  Arlette Slachmuylder
+Rem     Created view
+Rem
+Rem -----------------------------------------------------------------------
+Rem
+
+DROP VIEW BANINST1.SWVLINKS_PERSON;
+
+CREATE VIEW BANINST1.SWVLINKS_PERSON AS
+WITH PIDM_LIST as (
+    select distinct
+        SGRSATT_PIDM PIDM
+        ,SGRSATT_ATTS_CODE ATTS
+        ,min(SGRSATT_TERM_CODE_EFF) ATTS_TERM_START
+    from SGRSATT
+    where SGRSATT_ATTS_CODE in ('FC','GWY','YES')
+    group by SGRSATT_PIDM, SGRSATT_ATTS_CODE
+)
+,BIO as (
+    select distinct SPBPERS_PIDM BI_PIDM
+        ,SPBPERS_SEX BI_GENDER
+        ,SPBPERS_BIRTH_DATE BI_BDATE
+        ,SPBPERS_CITZ_CODE BI_CITZ
+    from SPBPERS
+        join PIDM_LIST on SPBPERS_PIDM = PIDM
+)
+-- Race - Separated Ethnicity/Race data from Banner
+,RACE as (
+    -- Hispanic/Latino Ethnicity
+    select SPBPERS_PIDM RC_PIDM
+        ,'HIS' RC_RACE
+    from SPBPERS
+        join PIDM_LIST on SPBPERS_PIDM = PIDM
+    where SPBPERS_ETHN_CDE = '2'
+    union
+    -- Self-Reported Races
+    select GORPRAC_PIDM RC_PIDM
+         ,GORPRAC_RACE_CDE RC_RACE
+    from GORPRAC
+        join PIDM_LIST on GORPRAC_PIDM = PIDM
+)
+-- Reporting Race - Aggregation based on Department of Ed. Ethn/Race categories:
+-- (as per http://nces.ed.gov/ipeds/reic/resource.asp)
+-- Hispanic or Latino (any)
+-- American Indian or Alaska Native (non-Hispanic)
+-- Asian (non-Hispanic)
+-- Black (non-Hispanic)
+-- Native Hawaiian or Other Pacific Islander (non-Hispanic)
+-- White (non-Hispanic)
+-- Two-or-More races (non-Hispanic)
+-- Non-Resident Alien (calculated after the fact)
+-- Not Reported (calculated after the fact)
+, REP_RACE as (
+    select RC_PIDM RR_PIDM
+        ,RC_RACE RR_RACE
+    from RACE
+    where RC_RACE = 'HIS'
+    union
+    select RC_PIDM RR_PIDM
+        ,RC_RACE RR_RACE
+    from RACE a
+    where not exists
+       (select 1
+          from SPBPERS
+         where SPBPERS_PIDM = RC_PIDM
+           and SPBPERS_ETHN_CDE = 2)
+        and 1 = (select count(*) from GORPRAC where GORPRAC_PIDM = RC_PIDM)
+    union
+    select RC_PIDM RR_PIDM
+        ,'MLT' RR_RACE
+    from RACE a
+    where not exists
+       (select 1 from SPBPERS
+         where SPBPERS_PIDM = RC_PIDM
+           and SPBPERS_ETHN_CDE = 2)
+        and 1 < (select count(*) from GORPRAC where GORPRAC_PIDM = RC_PIDM)
+)
+,HS as (
+    select distinct
+        PIDM HS_PIDM
+        ,count(*) over (partition by PIDM) HS_CNT
+        ,STVSBGI_CODE HS_CODE
+        ,STVSBGI_DESC HS_NAME
+        ,SOBSBGI_CITY HS_CITY
+        ,SOBSBGI_STAT_CODE HS_STATE
+        ,SORHSCH_GRADUATION_DATE HS_GRAD_DATE
+        ,STVDPLM_CODE HS_DPLM
+        ,STVDPLM_DESC HS_DPLM_DESC
+        ,SORHSCH_GPA HS_GPA
+    from PIDM_LIST
+        join SORHSCH on SORHSCH_PIDM = PIDM
+        left join STVSBGI on SORHSCH_SBGI_CODE = STVSBGI_CODE
+        left join SOBSBGI on SORHSCH_SBGI_CODE = SOBSBGI_SBGI_CODE
+        left join STVDPLM on SORHSCH_DPLM_CODE = STVDPLM_CODE
+    where SORHSCH.rowid =
+       (select distinct
+               first_value(SORHSCH.rowid)
+               over (partition by NULL
+                     order by SORHSCH_GRADUATION_DATE desc NULLS last
+                            , decode(SORHSCH_DPLM_CODE,'D',1,'G',2,'P',3
+                                                      ,'N',4,'S',5,6))
+        from SORHSCH
+        where SORHSCH_PIDM = PIDM)
+)
+,TESTS as (
+    select PIDM TE_PIDM
+        ,max(case
+                when sortest_tesc_code = 'ABEM' then 0
+                when substr(sortest_tesc_code,1,1)='M' then to_number(substr(sortest_tesc_code,2))
+                else NULL
+             end) TE_MATH
+        ,max(case
+                when sortest_tesc_code = 'ABER' then 0
+                when substr(sortest_tesc_code,1,1)='R' then to_number(substr(sortest_tesc_code,2))
+                else NULL
+            end) TE_READ
+        ,max(case
+                when sortest_tesc_code = 'ABEW' then 0
+                when substr(sortest_tesc_code,1,1)='W' then to_number(substr(sortest_tesc_code,2))
+                else NULL
+             end) TE_WRITE
+    from PIDM_LIST
+        join SORTEST on SORTEST_PIDM = PIDM
+    where (SORTEST_TESC_CODE in ('ABEM','ABEW','ABER')
+       or regexp_like (sortest_Tesc_code, '^[MRW][[:digit:]]+'))
+    group by PIDM
+)
+select PIDM
+     , ATTS
+     , ATTS_TERM_START
+     , f_pcc_id(PIDM) STU_ID
+     , f_format_name(PIDM,'LPMI') STU_NAME
+     , SPRADDR_STREET_LINE1 STU_STREET1
+     , SPRADDR_STREET_LINE2 STU_STREET2
+     , SPRADDR_ZIP STU_ZIP
+     , SPRADDR_CITY STU_CITY
+     , SPRADDR_STAT_CODE STU_STATE
+     , trunc(SHRLGPA_GPA,3) O_GPA
+     , SHRLGPA_HOURS_ATTEMPTED O_ATTEMPTED
+     , SHRLGPA_HOURS_EARNED O_EARNED
+     , case
+         when SHRLGPA_HOURS_EARNED < 15 then 'a) 0-14.9'
+         when SHRLGPA_HOURS_EARNED < 30 then 'b) 15-29.9'
+         when SHRLGPA_HOURS_EARNED < 45 then 'c) 30-44.9'
+         when SHRLGPA_HOURS_EARNED < 60 then 'd) 45-59.9'
+         when SHRLGPA_HOURS_EARNED < 75 then 'e) 60-74.9'
+         when SHRLGPA_HOURS_EARNED < 90 then 'f) 75-89.9'
+         when SHRLGPA_HOURS_EARNED >= 90 then 'g) 90+'
+       end O_EARNED_CAT
+     , BI_GENDER GENDER
+     , BI_BDATE BIRTHDATE
+     , BI_CITZ||' - '||STVCITZ_DESC CITIZENSHIP
+     , case
+         when BI_CITZ = 'NA' then 'Non-Resident Alien'
+         when RR_RACE is NULL then 'Race and Ethnicity Unknown'
+         when RR_RACE = 'HIS' then 'Hispanic/Latino'
+         when RR_RACE = 'MLT' then 'Multi-racial (non Hispanic)'
+         else (select GORRACE_DESC from GORRACE where GORRACE_RACE_CDE = RR_RACE)
+       end REP_RACE
+     , nvl2(ASI.RC_PIDM,1,NULL) ASIAN
+     , nvl2(AIN.RC_PIDM,1,NULL) NATIVE
+     , nvl2(BAA.RC_PIDM,1,NULL) BLACK
+     , nvl2(HIS.RC_PIDM,1,NULL) HISPANIC
+     , nvl2(HPI.RC_PIDM,1,NULL) ISLANDER
+     , nvl2(WHI.RC_PIDM,1,NULL) WHITE
+     , HS_CODE
+     , HS_NAME
+     , HS_CITY
+     , HS_STATE
+     , HS_GRAD_DATE
+     , HS_DPLM
+     , HS_DPLM_DESC
+     , TE_MATH
+     , TE_READ
+     , TE_WRITE
+     , (select distinct 'Y'
+          from SPRHOLD
+             , STVHLDD
+         where SPRHOLD_PIDM = PIDM
+           and SPRHOLD_HLDD_CODE = STVHLDD_CODE
+           and STVHLDD_REG_HOLD_IND = 'Y'
+           and SYSDATE between SPRHOLD_FROM_DATE and SPRHOLD_TO_DATE) RE_HOLD
+     , goremal_email_address PCC_EMAIL
+  from PIDM_LIST
+    join BIO on PIDM = BI_PIDM
+    join GOREMAL on PIDM = GOREMAL_PIDM
+        and 'PCC' = GOREMAL_EMAL_CODE
+    left join SPRADDR on PIDM = SPRADDR_PIDM
+        and SPRADDR.rowid = f_get_address_rowid(PIDM,'STDNADDR','A',SYSDATE,1,'S',NULL)
+    left join SHRLGPA on PIDM = SHRLGPA_PIDM
+        and SHRLGPA_LEVL_CODE = 'CR'
+        and SHRLGPA_GPA_TYPE_IND = 'I'
+    left join STVCITZ on BI_CITZ = STVCITZ_CODE
+    left join REP_RACE on PIDM = RR_PIDM
+    left join RACE ASI on PIDM = ASI.RC_PIDM and ASI.RC_RACE = 'AS'
+    left join RACE AIN on PIDM = AIN.RC_PIDM and AIN.RC_RACE = 'AI'
+    left join RACE BAA on PIDM = BAA.RC_PIDM and BAA.RC_RACE = 'BAA'
+    left join RACE HIS on PIDM = HIS.RC_PIDM and HIS.RC_RACE = 'HIS'
+    left join RACE HPI on PIDM = HPI.RC_PIDM and HPI.RC_RACE = 'HPI'
+    left join RACE WHI on PIDM = WHI.RC_PIDM and WHI.RC_RACE = 'WHI'
+    left join HS on PIDM = HS_PIDM
+    left join TESTS on PIDM = TE_PIDM;
+
+
+comment on table BANINST1.SWVLINKS_PERSON is 'The person view represents all students who have at one time or another been given an FC, GTC, or YTC attribute code.';
+comment on column BANINST1.SWVLINKS_PERSON.ATTS is 'This is the attribute code associated with the person record.';
+comment on column BANINST1.SWVLINKS_PERSON.STU_ID is 'Student ID';
+comment on column BANINST1.SWVLINKS_PERSON.ATTS_TERM_START is 'When the attribute first appears on the student record.';
+comment on column BANINST1.SWVLINKS_PERSON.STU_NAME is 'Student name in (Last, Preferred M.) format';
+comment on column BANINST1.SWVLINKS_PERSON.STU_STREET1 is 'The zip code of the primary address for the student';
+comment on column BANINST1.SWVLINKS_PERSON.STU_STREET2 is 'The zip code of the primary address for the student';
+comment on column BANINST1.SWVLINKS_PERSON.STU_CITY is 'The city name of the primary address for the student';
+comment on column BANINST1.SWVLINKS_PERSON.STU_ZIP is 'The zip code of the primary address for the student';
+comment on column BANINST1.SWVLINKS_PERSON.PCC_EMAIL is 'PCC email address';
+comment on column BANINST1.SWVLINKS_PERSON.O_GPA is 'Current overall institutional credit gpa';
+comment on column BANINST1.SWVLINKS_PERSON.O_ATTEMPTED is 'Current overall attempted credits';
+comment on column BANINST1.SWVLINKS_PERSON.O_EARNED is 'Current overall earned credits';
+comment on column BANINST1.SWVLINKS_PERSON.O_EARNED_CAT is 'Current overall earned credits, in 15-credit buckets (e.g. b) 15-29.9)';
+comment on column BANINST1.SWVLINKS_PERSON.GENDER is 'Listed sex/gender in banner';
+comment on column BANINST1.SWVLINKS_PERSON.BIRTHDATE is 'Birth date';
+comment on column BANINST1.SWVLINKS_PERSON.REP_RACE is 'Reporting (IPEDS) race/ethnicity category';
+comment on column BANINST1.SWVLINKS_PERSON.ASIAN is 'Individual race/ethnicity self reporting flags: Asian';
+comment on column BANINST1.SWVLINKS_PERSON.NATIVE is 'Individual race/ethnicity self reporting flags: American Indian/Alaska Native';
+comment on column BANINST1.SWVLINKS_PERSON.BLACK is 'Individual race/ethnicity self reporting flags: Black or African American';
+comment on column BANINST1.SWVLINKS_PERSON.HISPANIC is 'Individual race/ethnicity self reporting flags: Hispanic/Latino';
+comment on column BANINST1.SWVLINKS_PERSON.ISLANDER is 'Individual race/ethnicity self reporting flags: Native Hawaiian/Pacific Island';
+comment on column BANINST1.SWVLINKS_PERSON.WHITE is 'Individual race/ethnicity self reporting flags: White';
+comment on column BANINST1.SWVLINKS_PERSON.HS_CODE is 'The banner source/background institution code for the primary high school record (as defined by the record with the most recently listed graduation date, with a secondary ordering by a diploma hierarchy if multiple records have the same graduation date, or no graduation date exists)';
+comment on column BANINST1.SWVLINKS_PERSON.HS_NAME is 'The name of the primary high school record';
+comment on column BANINST1.SWVLINKS_PERSON.HS_CITY is 'The city of the primary high school record';
+comment on column BANINST1.SWVLINKS_PERSON.HS_STATE is 'The state of the primary high school record';
+comment on column BANINST1.SWVLINKS_PERSON.HS_GRAD_DATE is 'The graduation date of the primary high school record';
+comment on column BANINST1.SWVLINKS_PERSON.HS_DPLM is 'The diploma code for the primary high school record';
+comment on column BANINST1.SWVLINKS_PERSON.HS_DPLM_DESC is 'The diploma description for the primary high school record';
+comment on column BANINST1.SWVLINKS_PERSON.TE_MATH is 'Highest math testing placement';
+comment on column BANINST1.SWVLINKS_PERSON.TE_READ is 'Highest reading testing placement';
+comment on column BANINST1.SWVLINKS_PERSON.TE_WRITE is 'Highest writing testing placement';
+comment on column BANINST1.SWVLINKS_PERSON.RE_HOLD is 'Whether the student currently has a reg-blocking hold';
+
+DROP PUBLIC SYNONYM swvlinks_person;
+CREATE PUBLIC SYNONYM swvlinks_person FOR baninst1.swvlinks_person;

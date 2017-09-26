@@ -1,0 +1,117 @@
+Rem -----------------------------------------------------------------------
+Rem VIEW: SWVLINKS_COURSE - Links Application View of Course Data
+Rem
+Rem Purpose: To provide required Banner data to Links Application
+Rem          Only students with attributes associated with the
+Rem          LINKS program are returned
+Rem -----------------------------------------------------------------------
+Rem Modifications
+Rem 
+Rem Modifications
+Rem  1. 25-May-2017  Arlette Slachmuylder
+Rem     Created view
+Rem
+Rem -----------------------------------------------------------------------
+Rem
+
+DROP VIEW BANINST1.SWVLINKS_COURSE;
+
+CREATE OR REPLACE VIEW BANINST1.SWVLINKS_COURSE AS
+WITH BASE_LIST as (
+    select distinct
+        SGRSATT_PIDM PIDM
+        ,SGRSATT_ATTS_CODE ATTS
+    from SGRSATT
+    where SGRSATT_ATTS_CODE in ('FC','GWY','YES')
+)
+,PIDM_LIST as (
+    select distinct SFRSTCR_PIDM PIDM
+        ,SFRSTCR_TERM_CODE TERM
+        ,ATTS
+    from SFRSTCR
+        join STVRSTS on SFRSTCR_RSTS_CODE = STVRSTS_CODE
+        join BASE_LIST on SFRSTCR_PIDM = PIDM
+    where STVRSTS_INCL_SECT_ENRL = 'Y'
+)
+,REG_LIST as (
+    select distinct SFRSTCR_PIDM R_PIDM
+        ,SFRSTCR_TERM_CODE R_TERM
+        ,SSBSECT_CRN R_CRN
+        ,SFRSTCR_LEVL_CODE R_LEVL
+        ,SSBSECT_SUBJ_CODE R_SUBJ
+        ,SSBSECT_CRSE_NUMB R_CRSE
+        ,SFRSTCR_CREDIT_HR R_CREDIT
+        ,nvl(SSBSECT_CRSE_TITLE,SCBCRSE_TITLE) R_TITLE
+        ,(select SHRTCKG_GRDE_CODE_FINAL
+          from SHRTCKN
+             join SHRTCKG finalSHRTCKG on SHRTCKN_TERM_CODE = SHRTCKG_TERM_CODE
+                and SHRTCKN_PIDM = SHRTCKG_PIDM
+                and SHRTCKN_SEQ_NO = SHRTCKG_TCKN_SEQ_NO
+                and SHRTCKG_SEQ_NO = (select max(maxSHRTCKG.SHRTCKG_SEQ_NO)
+                                      from SHRTCKG maxSHRTCKG
+                                      where maxSHRTCKG.SHRTCKG_TERM_CODE = finalSHRTCKG.SHRTCKG_TERM_CODE
+                                         and maxSHRTCKG.SHRTCKG_PIDM = finalSHRTCKG.SHRTCKG_PIDM
+                                         and maxSHRTCKG.SHRTCKG_TCKN_SEQ_NO = finalSHRTCKG.SHRTCKG_TCKN_SEQ_NO)
+          where SHRTCKN_TERM_CODE = SFRSTCR_TERM_CODE
+              and SHRTCKN_CRN = SFRSTCR_CRN
+              and SHRTCKN_PIDM = SFRSTCR_PIDM
+        ) R_GRADE
+  from PIDM_LIST
+    join SFRSTCR on PIDM = SFRSTCR_PIDM
+        and TERM = SFRSTCR_TERM_CODE
+    join STVRSTS on SFRSTCR_RSTS_CODE = STVRSTS_CODE
+    join SSBSECT on SFRSTCR_CRN = SSBSECT_CRN
+        and SFRSTCR_TERM_CODE = SSBSECT_TERM_CODE
+    join SCBCRSE on SSBSECT_SUBJ_CODE = SCBCRSE_SUBJ_CODE
+        and SSBSECT_CRSE_NUMB = SCBCRSE_CRSE_NUMB
+  where STVRSTS_INCL_SECT_ENRL = 'Y'
+    --get max to get the final grade for the class
+    and SCBCRSE_EFF_TERM = (select max(SCBCRSE_EFF_TERM)
+                           from SCBCRSE
+                           where SCBCRSE_SUBJ_CODE = SSBSECT_SUBJ_CODE
+                             and SCBCRSE_CRSE_NUMB = SSBSECT_CRSE_NUMB
+                             and SCBCRSE_EFF_TERM <= SFRSTCR_TERM_CODE)
+)
+select PIDM
+     , ATTS
+     , f_pcc_id(PIDM) STU_ID
+     , TERM
+     , R_CRN CRN
+     , R_LEVL LEVL
+     , R_SUBJ SUBJ
+     , R_CRSE CRSE
+     , R_TITLE TITLE
+     , R_CREDIT CREDITS
+     , R_GRADE GRADE
+     , case R_LEVL
+         when 'CR' then
+           decode(R_GRADE
+                 ,'A','Y'
+                 ,'B','Y'
+                 ,'C','Y'
+                 ,'D','Y'
+                 ,'P','Y'
+                 ,'SC','Y'
+                 ,'N')
+         else NULL
+       end PASSED
+from PIDM_LIST
+     join REG_LIST on PIDM = R_PIDM
+        and TERM = R_TERM;
+   
+   
+comment on table BANINST1.SWVLINKS_COURSE is 'The award view represents all courses enrolled in by students in the links_person view.';
+comment on column BANINST1.SWVLINKS_COURSE.ATTS is 'This is the attribute code associated with the person record.';
+comment on column BANINST1.SWVLINKS_COURSE.STU_ID is 'Student ID';
+comment on column BANINST1.SWVLINKS_COURSE.TERM is 'Term Code';
+comment on column BANINST1.SWVLINKS_COURSE.CRN is 'Course Reference Number';
+comment on column BANINST1.SWVLINKS_COURSE.LEVL is 'Course Level';
+comment on column BANINST1.SWVLINKS_COURSE.SUBJ is 'Subject Code';
+comment on column BANINST1.SWVLINKS_COURSE.CRSE is 'Course Number';
+comment on column BANINST1.SWVLINKS_COURSE.TITLE is 'Section or Course Title';
+comment on column BANINST1.SWVLINKS_COURSE.CREDITS is 'Individual enrolled credits';
+comment on column BANINST1.SWVLINKS_COURSE.GRADE is 'Final grade once rolled to history';
+comment on column BANINST1.SWVLINKS_COURSE.PASSED is 'Marker for if the final grade is a passing grade';
+
+DROP PUBLIC SYNONYM swvlinks_course;
+CREATE PUBLIC SYNONYM swvlinks_course FOR baninst1.swvlinks_course;

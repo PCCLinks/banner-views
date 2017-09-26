@@ -1,0 +1,114 @@
+Rem -----------------------------------------------------------------------
+Rem VIEW: SWVLINKS_TERM - Links Application View of Term Data
+Rem
+Rem Purpose: To provide required Banner data to Links Application
+Rem          Only students with attributes associated with the
+Rem          LINKS program are returned
+Rem -----------------------------------------------------------------------
+Rem Modifications
+Rem  1. 25-May-2017  Arlette Slachmuylder
+Rem     Created view
+Rem  2. 8-September-2017 Arlette Slachmuylder
+Rem     Corrected error where ATTS='FC" was in the PIDM_LIST query, this was removed
+Rem -----------------------------------------------------------------------
+Rem
+
+DROP VIEW BANINST1.SWVLINKS_TERM;
+
+CREATE OR REPLACE VIEW BANINST1.SWVLINKS_TERM AS
+WITH BASE_LIST as (
+    select distinct SGRSATT_PIDM PIDM
+        ,SGRSATT_ATTS_CODE ATTS
+    from SGRSATT
+    where SGRSATT_ATTS_CODE in ('FC','GWY','YES')
+)
+,PIDM_LIST as (
+    select distinct
+        SFRSTCR_PIDM  PIDM
+        ,SFRSTCR_TERM_CODE TERM
+        ,ATTS
+    from SFRSTCR
+        join STVRSTS on SFRSTCR_RSTS_CODE = STVRSTS_CODE
+        join BASE_LIST on SFRSTCR_PIDM = PIDM
+    where STVRSTS_INCL_SECT_ENRL = 'Y'
+)
+,SAP_LIST as (
+    select distinct PIDM SAP_PIDM
+        ,TERM SAP_TERM
+        ,SHRTTRM_TERM_CODE SAP_CALC_TERM
+        ,SHRTTRM_CAST_CODE SAP_CAST
+    from SHRTTRM
+        join PIDM_LIST on SHRTTRM_PIDM = PIDM
+    where SHRTTRM_TERM_CODE =
+      (select max(SHRTTRM_TERM_CODE)
+         from SHRTTRM
+        where SHRTTRM_PIDM = PIDM
+          and SHRTTRM_TERM_CODE < TERM)
+)
+select PIDM
+     , ATTS
+     , TERM
+     , f_pcc_id(PIDM) STU_ID
+     , SAP_CAST INCOMING_SAP
+     , (select SHRTTRM_CAST_CODE
+          from SHRTTRM
+         where SHRTTRM_PIDM = PIDM
+           and SHRTTRM_TERM_CODE = TERM) OUTGOING_SAP
+     , SGBSTDN_CAMP_CODE  P_CAMPUS
+     , STVCAMP_DESC  P_CAMPUS_DESC
+     , SGBSTDN_DEGC_CODE_1 P_DEGREE
+     , STVDEGC_DESC  P_DEGREE_DESC
+     , SGBSTDN_MAJR_CODE_1 P_MAJOR
+     , STVMAJR_DESC P_MAJOR_DESC
+     , trunc(SHRTGPA_GPA,3) T_GPA
+     , SHRTGPA_HOURS_ATTEMPTED T_ATTEMPTED
+     , SHRTGPA_HOURS_EARNED T_EARNED
+     , decode(ATTS
+             ,'FC',(select RCRAPP4_C_INST_1_TOT_FAM_CTRB
+                    from RCRAPP1
+                        join RCRAPP4 on RCRAPP1_PIDM = RCRAPP4_PIDM
+                            and RCRAPP1_AIDY_CODE = RCRAPP4_AIDY_CODE
+                            and RCRAPP1_INFC_CODE = RCRAPP4_INFC_CODE
+                            and RCRAPP1_SEQ_NO = RCRAPP4_SEQ_NO
+                     where RCRAPP1_pidm = PIDM
+                       and RCRAPP1_AIDY_CODE = STVTERM_FA_PROC_YR
+                       and RCRAPP1_INFC_CODE = 'EDE'
+                       and RCRAPP1_CURR_REC_IND = 'Y')
+           ,NULL) EFC 
+from PIDM_LIST
+    left join SHRTGPA on PIDM = SHRTGPA_PIDM
+        and TERM = SHRTGPA_TERM_CODE
+        and SHRTGPA_LEVL_CODE = 'CR'
+        and SHRTGPA_GPA_TYPE_IND = 'I'
+    join SGBSTDN on PIDM = SGBSTDN_PIDM
+    join STVCAMP on SGBSTDN_CAMP_CODE = STVCAMP_CODE
+    join STVDEGC on SGBSTDN_DEGC_CODE_1 = STVDEGC_CODE
+    join STVMAJR on SGBSTDN_MAJR_CODE_1 = STVMAJR_CODE
+    left join SAP_LIST on PIDM = SAP_PIDM
+        and TERM = SAP_TERM
+    join STVTERM on TERM = STVTERM_CODE
+ where SGBSTDN_TERM_CODE_EFF =
+       (select max(SGBSTDN_TERM_CODE_EFF)
+          from SGBSTDN
+         where SGBSTDN_PIDM = PIDM
+           and SGBSTDN_TERM_CODE_EFF <= TERM);
+   
+comment on table BANINST1.SWVLINKS_TERM is 'The award view represents term-based data for students in the links_person view.';
+comment on column BANINST1.SWVLINKS_TERM.ATTS is 'This is the attribute code associated with the person record.';
+comment on column BANINST1.SWVLINKS_TERM.STU_ID is 'Student ID';
+comment on column BANINST1.SWVLINKS_TERM.TERM is 'Term Code';
+comment on column BANINST1.SWVLINKS_TERM.INCOMING_SAP is 'Incoming combined academic standing code (not including overrides)';
+comment on column BANINST1.SWVLINKS_TERM.OUTGOING_SAP is 'Outgoing combined academic standing code (not including overrides)';
+comment on column BANINST1.SWVLINKS_TERM.P_CAMPUS is 'Primary campus code';
+comment on column BANINST1.SWVLINKS_TERM.P_CAMPUS_DESC is 'Primary campus description';
+comment on column BANINST1.SWVLINKS_TERM.P_DEGREE is 'Primary degree code';
+comment on column BANINST1.SWVLINKS_TERM.P_DEGREE_DESC is 'Primary degree description';
+comment on column BANINST1.SWVLINKS_TERM.P_MAJOR is 'Primary major code';
+comment on column BANINST1.SWVLINKS_TERM.P_MAJOR_DESC is 'Primary major description';
+comment on column BANINST1.SWVLINKS_TERM.T_GPA is 'Institutional credit term grade point average';
+comment on column BANINST1.SWVLINKS_TERM.T_ATTEMPTED is 'Institutional term credits attempted';
+comment on column BANINST1.SWVLINKS_TERM.T_EARNED is 'Institiutional term credits earned';
+comment on column BANINST1.SWVLINKS_TERM.EFC is '(FC Only) Estimated Family Contribution';
+
+DROP PUBLIC SYNONYM swvlinks_term;
+CREATE PUBLIC SYNONYM swvlinks_term FOR BANINST1.swvlinks_term;

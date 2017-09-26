@@ -1,0 +1,52 @@
+Rem -----------------------------------------------------------------------
+Rem VIEW: SWVLINKS_AWARD - Links Application View of Award Data
+Rem
+Rem Purpose: To provide required Banner data to Links Application
+Rem          Only students with attributes associated with the
+Rem          LINKS program are returned
+Rem -----------------------------------------------------------------------
+Rem Modifications
+Rem 
+Rem Modifications
+Rem  1. 25-May-2017  Arlette Slachmuylder
+Rem     Created view
+Rem  2. 16-Aug-2017 Arlette Slachmuylder
+Rem     Corrected error in the "in" statement from YEC to YES
+Rem -----------------------------------------------------------------------
+Rem
+
+DROP VIEW BANINST1.SWVLINKS_AWARD;
+
+CREATE VIEW BANINST1.SWVLINKS_AWARD AS
+WITH PIDM_LIST as (
+    select distinct
+        SGRSATT_PIDM PIDM
+        ,SGRSATT_ATTS_CODE ATTS
+    from SGRSATT
+    where SGRSATT_ATTS_CODE in ('FC','GWY','YES')
+)
+select PIDM
+    ,ATTS
+    ,f_pcc_id(PIDM) STU_ID
+    ,SHRDGMR_DEGC_CODE DEGREE
+    ,STVDEGC_DESC DEGREE_DESC
+    ,SHRDGMR_MAJR_CODE_1 MAJOR
+    ,STVMAJR_DESC MAJOR_DESC
+    ,SHRDGMR_GRAD_DATE AWARD_DATE
+from PIDM_LIST
+    join SHRDGMR on PIDM_LIST.PIDM = SHRDGMR_PIDM
+    join STVDEGC on SHRDGMR_DEGC_CODE = STVDEGC_CODE
+    join STVMAJR on SHRDGMR_MAJR_CODE_1 = STVMAJR_CODE
+where SHRDGMR_DEGS_CODE = 'AW';
+
+comment on table BANINST1.SWVLINKS_AWARD is 'The award view represents all awards granted to students in the links_person view.';
+comment on column BANINST1.SWVLINKS_AWARD.ATTS is 'This is the attribute code associated with the person record.';
+comment on column BANINST1.SWVLINKS_AWARD.STU_ID is 'Student ID';
+comment on column BANINST1.SWVLINKS_AWARD.DEGREE is 'Banner Degree Code';
+comment on column BANINST1.SWVLINKS_AWARD.DEGREE_DESC is 'Banner Degree Description';
+comment on column BANINST1.SWVLINKS_AWARD.MAJOR is 'Banner Major Code';
+comment on column BANINST1.SWVLINKS_AWARD.MAJOR_DESC is 'Banner Major Description';
+comment on column BANINST1.SWVLINKS_AWARD.AWARD_DATE is 'Award graduation date';
+
+DROP PUBLIC SYNONYM swvlinks_award;
+CREATE PUBLIC SYNONYM swvlinks_award FOR BANINST1.swvlinks_award;
