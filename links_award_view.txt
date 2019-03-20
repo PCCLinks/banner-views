@@ -14,6 +14,8 @@ Rem  2. 16-Aug-2017 Arlette Slachmuylder
 Rem     Corrected error in the "in" statement from YEC to YES
 Rem  3. 16-September-2017 Arlette Slachmuylder
 Rem     Added the FT attribute for viewing of Fast Track students in SE
+Rem  4. 20-March-2019 Arlette Slachmuylder
+Rem     Added two new attribute codes PDXB- PDX Bridge, FUTP- Future Connect Plus
 Rem -----------------------------------------------------------------------
 Rem
 
@@ -25,7 +27,7 @@ WITH PIDM_LIST as (
         SGRSATT_PIDM PIDM
         ,SGRSATT_ATTS_CODE ATTS
     from SGRSATT
-    where SGRSATT_ATTS_CODE in ('FC','GWY','YES','FT')
+    where SGRSATT_ATTS_CODE in ('FC','GWY','YES','FT', 'PDXB', 'FUTP')
 )
 select PIDM
     ,ATTS

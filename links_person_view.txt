@@ -10,6 +10,8 @@ Rem  1. 25-May-2017  Arlette Slachmuylder
 Rem     Created view
 Rem  2. 16-September-2017 Arlette Slachmuylder
 Rem     Added the FT attribute for viewing of Fast Track students in SE
+Rem  3. 20-March-2019 Arlette Slachmuylder
+Rem     Added two new attribute codes PDXB- PDX Bridge, FUTP- Future Connect Plus
 Rem
 Rem -----------------------------------------------------------------------
 Rem
@@ -23,7 +25,7 @@ WITH PIDM_LIST as (
         ,SGRSATT_ATTS_CODE ATTS
         ,min(SGRSATT_TERM_CODE_EFF) ATTS_TERM_START
     from SGRSATT
-    where SGRSATT_ATTS_CODE in ('FC','GWY','YES','FT')
+    where SGRSATT_ATTS_CODE in ('FC','GWY','YES','FT', 'PDXB', 'FUTP')
     group by SGRSATT_PIDM, SGRSATT_ATTS_CODE
 )
 ,BIO as (
